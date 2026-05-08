@@ -28,6 +28,11 @@
 #include <QtGui>
 #include <QSettings>
 #include <QMessageBox>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <signal.h>
+#include <unistd.h>
 
 #if defined(Q_OS_MAC)
 #include <Carbon/Carbon.h>
@@ -87,6 +92,34 @@ int main(int argc, char* argv[])
     QCoreApplication::setApplicationName("InputLeap");
 
     QInputLeapApplication app(argc, argv);
+
+    QString lockFilePath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) +
+                          "/InputLeap/.inputleap.lock";
+    QDir lockDir(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/InputLeap");
+    if (!lockDir.exists()) {
+        lockDir.mkpath(".");
+    }
+
+    QFile lockFile(lockFilePath);
+    if (lockFile.exists()) {
+        if (lockFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString pidStr = lockFile.readAll().trimmed();
+            lockFile.close();
+            bool pidOk = false;
+            int existingPid = pidStr.toInt(&pidOk);
+            if (pidOk && existingPid > 0) {
+                if (kill(existingPid, 0) == 0) {
+                    fprintf(stderr, "Another instance of InputLeap is already running\n");
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (lockFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        lockFile.write(QString::number(QCoreApplication::applicationPid()).toUtf8());
+        lockFile.close();
+    }
 
 #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     app.setDesktopFileName(QStringLiteral("io.github.input_leap.input-leap"));
